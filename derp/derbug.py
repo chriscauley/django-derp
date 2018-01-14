@@ -6,6 +6,7 @@ from django.utils import timezone
 
 import datetime, os, json, difflib, subprocess, traceback
 from collections import defaultdict
+from derp import config
 
 class Track():
     def __init__(self,**kwargs):
@@ -15,7 +16,6 @@ class Track():
         self.clear()
         self.client = Client()
         self.prefix = kwargs.get('prefix',".__results")
-        self.CANNONICAL = getattr(settings,"CANNONICAL",False)
     def __call__(self,s=""):
         if not s:
             _f,line_no,func,_t = traceback.extract_stack()[-2]
@@ -99,7 +99,7 @@ class Track():
         write_path = os.path.join(write_dir,fname)
         path_display = write_path.replace(self.prefix,"")
         path_display = path_display if len(path_display) < 55 else "..."+path_display[-45:]
-        if self.CANNONICAL:
+        if config.CANNONICAL:
             self.write_file(write_path,content,group="RESULTS")
             self("wrote %s"%path_display)
             return
@@ -153,7 +153,7 @@ class Track():
         with open(fpath,"r+") as f:
             results = json.loads(f.read() or "[]")
             results.append(dict(
-                CANNONICAL=self.CANNONICAL,
+                CANNONICAL=config.CANNONICAL,
                 url=url,
                 email=email,
                 seconds=seconds,
