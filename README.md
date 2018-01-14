@@ -1,3 +1,3 @@
-# django-derp - A develop driven test client
+# django-derp - A development driven test client
 
-Django-derp is a python client used to create tests from live data. You first specify a list of urls, users, and other functions to test. Running `CANNONICAL=1 derp` then runs all tests and caches the results of each url. Then, after changing some code, running `derp` will re-run all the tests and compare them to the cached values. The goal is to quickly verify that changes in code have no unforseen consequences.
+Django-derp is a python client used to create tests from live data. You first specify a list of urls, users, and other functions to test. Running `./manage.py run_derp --stable` then runs all tests and caches the results of each url. Then, after changing some code, running `./manage.py run_derp` will re-run all the tests and compare them to the cached values. The goal is to quickly verify that changes in code have no unforseen consequences.

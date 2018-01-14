@@ -99,7 +99,7 @@ class Track():
         write_path = os.path.join(write_dir,fname)
         path_display = write_path.replace(self.prefix,"")
         path_display = path_display if len(path_display) < 55 else "..."+path_display[-45:]
-        if config.CANNONICAL:
+        if config.STABLE:
             self.write_file(write_path,content,group="RESULTS")
             self("wrote %s"%path_display)
             return
@@ -153,7 +153,7 @@ class Track():
         with open(fpath,"r+") as f:
             results = json.loads(f.read() or "[]")
             results.append(dict(
-                CANNONICAL=config.CANNONICAL,
+                STABLE=config.STABLE,
                 url=url,
                 email=email,
                 seconds=seconds,
