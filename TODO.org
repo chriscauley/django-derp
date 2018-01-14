@@ -1,0 +1,9 @@
+* pip deploy
+** create a cli.py that can be symlinked to /user/bin/derp
+** add to pip
+* arguments
+** probably call it test_derp or herp instead of run_derp
+** config should have sub tasks in addition to main task so that `./manage.py run_derp leaderboard`
+   will only test the leaderboard urls
+** maybe have a `--user` flag that matches the email so that it can selectively run one user
+** ibid for url flag
