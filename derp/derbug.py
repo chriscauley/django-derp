@@ -4,13 +4,17 @@ from django.db import connection,connections
 from django.test import Client
 from django.utils import timezone
 
-import datetime, os, json, difflib, subprocess, traceback
+import datetime, os, json, difflib, subprocess, traceback, sys
 from collections import defaultdict
 from derp import config
+from derp.models import Test, TestRun
 
 class Track():
     def __init__(self,**kwargs):
+        if "run_derp" in sys.argv:
+            settings.EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
         self.git_hash = subprocess.Popen(['git','rev-parse','HEAD'],stdout=subprocess.PIPE).communicate()[0]
+        STABLE = config.STABLE
         self.groups = defaultdict(list)
         self.cursor = connections['default'].cursor()
         self.clear()
@@ -82,6 +86,8 @@ class Track():
             pass
         else:
             # The current code has some messed up sorting
+            if 'season_points_breakdown' in j:
+                j['season_points_breakdown'] = sorted(j['season_points_breakdown'])
             if 'results' in j:
                 j['results'] = sorted(j['results'],key=lambda d:(d.get("points",None),d.get("last_name",None)))
                 for result in j['results']:
@@ -90,52 +96,50 @@ class Track():
             content = json.dumps(j,sort_keys=True,indent=4)
         return content
 
-    def verify(self,content,*args):
-        content = self.parse_content(content)
-        fpath = os.path.join(*args)
-        _parts = fpath.split("/")
-        write_dir = self.mkdir("/".join(_parts[:-1]))
-        fname = _parts[-1]
-        write_path = os.path.join(write_dir,fname)
-        path_display = write_path.replace(self.prefix,"")
-        path_display = path_display if len(path_display) < 55 else "..."+path_display[-45:]
-        if config.STABLE:
-            self.write_file(write_path,content,group="RESULTS")
-            self("wrote %s"%path_display)
-            return
-        if not os.path.exists(write_path):
-            raise ValueError("No file to compare against: %s"%write_path)
-        with open(write_path,'r') as f:
-            old = self.parse_content(f.read())
-            if content == old:
-                self("PASS: %s"%path_display)
-                self.groups['PASS'].append(write_path)
-            else:
-                self("CHANGED: %s"%path_display)
-                self.groups['CHANGED'].append(write_path)
-                d = "\n".join(difflib.unified_diff(old.split("\n"),content.split("\n")))
-                diff_path = os.path.join(self.mkdir(".diff"),"%s.diff"%fname)
-                self.write_file(diff_path,d,group="DIFF")
-
-    def verify_url(self,url,email=None,password=None):
-        if email:
-            self.login(email,password)
+    def verify_email_message(self,email,name,params):
+        test,new = Test.objects.get_from_parameters(
+            type='email',
+            name=name,
+            parameters=params,
+        )
+        if new:
+            print "Test created: %s"%test
+        content = "SUBJECT:{}\nTO:{}nFROM:{}\n\n--==BODY==--{}\n"
+        content = content.format(email.subject,email.to,email.from_email,email.body)
+        for text,mime_type in email.alternatives:
+            content += "\n\n--=={}==--\n{}".format(mime_type,text)
+        test.verify(content)
+    def verify_url(self,url,params):
+        test,new = Test.objects.get_from_parameters(
+            type='url',
+            name=params['url'],
+            parameters=params,
+        )
+        if new:
+            print "Test created: %s"%test
+        url = url.format(**params)
         start = datetime.datetime.now()
         start_queries = len(connection.queries)
-        content = self.curl(url)
-        end_queries = len(connection.queries)
+        try:
+            content = self.parse_content(self.curl(url))
+        except ImportError,e:
+            content = "TEST FAILED\n\n%s"%url
+            if config.STABLE or content == test.result:
+                pass
+            else:
+                raise Exception(e)
+        queries = len(connection.queries)-start_queries
         seconds = (datetime.datetime.now() - start).total_seconds()
-        self.record_result(url,email,seconds,end_queries-start_queries)
-        self.verify(content,url,email)
+        if test.verify(content):
+            test.record_run(seconds,queries,self.git_hash)
 
     def curl(self,url,fpath=None):
         #cProfile.runctx("response = client.get(url)",None,locals())
         response = self.client.get(url)
-        fpath = fpath or url.strip("/")
         return response.content
 
     def write_sql(self,s,content,comments=[]):
-        fpath = "derp/.queries/%s.sql"%s
+        fpath = ".dev/derp/.queries/%s.sql"%s
         if os.path.exists(fpath):
             return
         head = ""
@@ -147,21 +151,4 @@ class Track():
         with open(path,'w') as f:
             f.write(content)
         group and self.groups[group].append(path)
-
-    def record_result(self,url,email,seconds,queries):
-        fpath = ".dev/.__results.cache"
-        with open(fpath,"r+") as f:
-            results = json.loads(f.read() or "[]")
-            results.append(dict(
-                STABLE=config.STABLE,
-                url=url,
-                email=email,
-                seconds=seconds,
-                queries=queries,
-                created=str(timezone.now()),
-                git_hash=self.git_hash,
-            ))
-            f.seek(0)
-            f.write(json.dumps(results))
-            f.truncate()
 t = Track()
