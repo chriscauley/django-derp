@@ -1,19 +1,19 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db import connection,connections
+from django.db import connection, connections
 from django.test import Client
 from django.utils import timezone
 
-import datetime, os, json, difflib, subprocess, traceback, sys
+import os, json, difflib, subprocess, traceback, sys, freezegun
 from collections import defaultdict
 from derp import config
-from derp.models import Test, TestRun
+
+real_datetime = freezegun.api.real_datetime
 
 class Track():
     def __init__(self,**kwargs):
         if "run_derp" in sys.argv:
             settings.EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
-        self.git_hash = subprocess.Popen(['git','rev-parse','HEAD'],stdout=subprocess.PIPE).communicate()[0]
         STABLE = config.STABLE
         self.groups = defaultdict(list)
         self.cursor = connections['default'].cursor()
@@ -26,11 +26,11 @@ class Track():
             parts = _f.split("/")
             s = "%s: %s@%s"%(parts[-1],func,line_no)
             s = ">"*(len(parts)-1) + " " + s
-        now = datetime.datetime.now()
+        now = real_datetime.now()
         count = len(connection.queries) - self.queries_count
         print self.dt(self.start),'\t',self.dt(self.last),'\t',count,'q\t@',s
         self.queries_count = len(connection.queries)
-        self.last = datetime.datetime.now()
+        self.last = real_datetime.now()
     def __del__(self):
         for group,files in self.groups.items():
             f = open(group,"w")
@@ -41,7 +41,7 @@ class Track():
             print "wrote "," ".join(self.groups.keys())
 
     def dt(self,t):
-        ms = int(1000*(datetime.datetime.now()-t).total_seconds())
+        ms = int(1000*(real_datetime.now()-t).total_seconds())
         if ms < 1000:
             return "%sms"%ms
         if ms < 10000:
@@ -51,7 +51,7 @@ class Track():
         self.logged_in = None
         if s:
             print s
-        self.start = self.last = datetime.datetime.now()
+        self.start = self.last = real_datetime.now()
         self.queries_count = 0
 
     def login(self,email,password=None,force=True):
@@ -76,67 +76,12 @@ class Track():
                 os.mkdir(p)
         return p
 
-    def parse_content(self,content,parse_json=True):
-        content = content.replace(".0,",",").replace(".0\n","\n")
-        if not parse_json:
-            return content
-        try:
-            j = json.loads(content)
-        except ValueError:
-            pass
-        else:
-            # The current code has some messed up sorting
-            if 'season_points_breakdown' in j:
-                j['season_points_breakdown'] = sorted(j['season_points_breakdown'])
-            if 'results' in j:
-                j['results'] = sorted(j['results'],key=lambda d:(d.get("points",None),d.get("last_name",None)))
-                for result in j['results']:
-                    if result.get("team_ids",None):
-                        result['team_ids'] = sorted(result['team_ids'])
-            content = json.dumps(j,sort_keys=True,indent=4)
-        return content
-
-    def verify_email_message(self,email,name,params):
-        test,new = Test.objects.get_from_parameters(
-            type='email',
-            name=name,
-            parameters=params,
-        )
-        if new:
-            print "Test created: %s"%test
-        content = "SUBJECT:{}\nTO:{}nFROM:{}\n\n--==BODY==--{}\n"
+    def parse_email_message(self,email):
+        content = "SUBJECT:{}\nTO:{}\nFROM:{}\n\n--==BODY==--{}\n"
         content = content.format(email.subject,email.to,email.from_email,email.body)
         for text,mime_type in email.alternatives:
             content += "\n\n--=={}==--\n{}".format(mime_type,text)
-        test.verify(content)
-    def verify_url(self,url,params):
-        test,new = Test.objects.get_from_parameters(
-            type='url',
-            name=params['url'],
-            parameters=params,
-        )
-        if new:
-            print "Test created: %s"%test
-        url = url.format(**params)
-        start = datetime.datetime.now()
-        start_queries = len(connection.queries)
-        try:
-            content = self.parse_content(self.curl(url))
-        except ImportError,e:
-            content = "TEST FAILED\n\n%s"%url
-            if config.STABLE or content == test.result:
-                pass
-            else:
-                raise Exception(e)
-        queries = len(connection.queries)-start_queries
-        seconds = (datetime.datetime.now() - start).total_seconds()
-        if test.verify(content):
-            test.record_run(seconds,queries,self.git_hash)
-
-    def curl(self,url,fpath=None):
-        #cProfile.runctx("response = client.get(url)",None,locals())
-        response = self.client.get(url)
-        return response.content
+        return content
 
     def write_sql(self,s,content,comments=[]):
         fpath = ".dev/derp/.queries/%s.sql"%s
