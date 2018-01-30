@@ -15,6 +15,7 @@ class Track():
         if "run_derp" in sys.argv:
             settings.EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
         STABLE = config.STABLE
+        self.outputs = []
         self.groups = defaultdict(list)
         self.cursor = connections['default'].cursor()
         self.clear()

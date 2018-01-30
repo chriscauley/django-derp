@@ -22,15 +22,20 @@ class Command (BaseCommand):
             self.print_status()
         targets = config.ALLOWED_TARGETS.get(command,None) # this means a command is limited to these arguments
         targets = targets or config.TARGETS.get(kwargs['target'],kwargs['target']) # or the specified arguments
+        missing = targets == "missing"
+        if missing:
+            targets = None
         targets = targets or config.TARGETS['_all'] # or just use them all!
         if type(targets) == str:
             targets = targets.split(',')
-        print "Using command:",command
+        print "Using commands:",config.COMMANDS.get(command,[])
         print "Using targets:",targets
         for target in targets:
-            t.clear("\n*** Using target %s ***"%target)
+            #t.clear("\n*** Using target %s ***"%target)
             for subcommand in config.COMMANDS.get(command,[]):
-                if type(subcommand) == str:
-                    URLRunner(subcommand,email=target).run()
-                else:
-                    TaskRunner(subcommand,target).run()
+                _ = URLRunner if type(subcommand) == str else TaskRunner
+                runner = _(subcommand,email=target)
+                if missing and runner.test.testrun_set.filter(commit_id=config.COMMIT_HASH,status="pass"):
+                    print "skipping ",runner.test
+                    continue
+                runner.run()
