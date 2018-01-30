@@ -14,7 +14,7 @@ class TestRunInline(admin.TabularInline):
 @admin.register(Test)
 class TestAdmin(admin.ModelAdmin):
     inlines = [TestRunInline]
-    readonly_fields = ['type','name','parameters','parameters_hash','result']
+    readonly_fields = ['type','parameters','parameters_hash','result']
 
 @admin.register(TestStatus)
 class TestStatusAdmin(admin.ModelAdmin):

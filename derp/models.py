@@ -1,3 +1,4 @@
+from django.core.urlresolvers import resolve, Resolver404
 from django.db import models
 
 from derp.fields import JSONField
@@ -50,22 +51,30 @@ class TestManager(models.Manager):
         return obj,new
 
 class Test(JsonModel):
-    json_fields = ['id','type','name','parameters','result']
+    json_fields = ['id','type','parameters','url_name']
     objects = TestManager()
     TEST_CHOICES = [
         ('url','URL'),
         ('task','TASK'),
     ]
     type = models.CharField(max_length=16,choices=TEST_CHOICES)
-    name = models.CharField(max_length=128,help_text="Verbose Test being called (eg. a url, task, or function")
     parameters = JSONField(default=dict)
     parameters_hash = models.CharField(max_length=32,default="arst")
     result = models.TextField(default="")
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     @property
-    def as_json(self):
-        return { k: getattr(self,k) for k in ['type','name','parameters','updated',"id"]}
+    def url_name(self):
+        if not 'url' in self.parameters:
+            return
+        url_params = {'client_id': 1,'team_id': 1}
+        url_parts = self.parameters['url'].format(**url_params)
+        url = url_parts[0]
+        qs = ""
+        try:
+            return resolve(url).view_name
+        except Resolver404:
+            return url
     def save(self,*args,**kwargs):
         self.parameters_hash = hashlib.md5(json.dumps(self.parameters,sort_keys=True)).hexdigest()
         super(Test,self).save(*args,**kwargs)
@@ -74,7 +83,7 @@ class Test(JsonModel):
         old_result = self.result or ""
         success = False
         if config.STABLE:
-            verb = "SAME" if self.result == content else "UPDATED"
+            verb = "SAME" if self.result == content else ("UPDATED %s>%s"%(len(self.result),len(content)))
             if not old_result:
                 verb = "WROTE"
             self.result = content
@@ -98,7 +107,8 @@ class Test(JsonModel):
             t.write_file(diff_path,d,group="DIFF")
             t("CHANGED: %s %s"%(self.id,self))
         return success
-    def record_run(self,seconds,queries,status='success'):
+    def record_run(self,seconds,queries,status='pass'):
+        Commit.objects.get_or_create(id=config.COMMIT_HASH)
         run = TestRun.objects.create(
             test=self,
             commit_id=config.COMMIT_HASH,
@@ -120,9 +130,10 @@ class Test(JsonModel):
         username,domain = self.parameters['email'].split("@")
         return "%s@%s"%(username[0],domain)
     def __unicode__(self):
-        if self.name.startswith("/") and '@' in self.parameters.get("email",""): #probably a url
-            return "%s: %s %s"%(self.type,self.get_short_url(),self.get_short_email())
-        return self.name
+        out = self.type.upper()+": "
+        items = [self.parameters.get(key,None) for key in ['url','task_name','email']]
+        items = " ".join([i for i in items if i])
+        return self.type.upper()+": " + items
 
 STATUS_CHOICES = [
     ('pass','pass'),
@@ -155,7 +166,7 @@ class TestRun(JsonModel):
     status = models.CharField(max_length=16,choices=STATUS_CHOICES,default='unknown')
     def save(self,*args,**kwargs):
         if not self.id:
-            status,new = TestStatus.objects.get_or_create(test=self.test,commit=self.commit)
+            teststatus,new = TestStatus.objects.get_or_create(test=self.test,commit=self.commit)
             if teststatus.status != self.status:
                 teststatus.status = self.status
                 teststatus.save()
