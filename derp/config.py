@@ -4,8 +4,9 @@ DJANGO_SETTINGS_MODULE = "settings"
 TARGETS = {}
 COMMANDS = {}
 ALLOWED_TARGETS = {}
-PREP_VARIABLES = lambda *args,**kwargs: None
+_process_json = PREP_VARIABLES = lambda *args,**kwargs: None
 derp_dir = os.path.join(os.path.abspath("."),'_derp')
+
 
 _cmd = 'git log --pretty=format:%H'
 COMMIT_LIST = subprocess.Popen(_cmd.split(" "),stdout=subprocess.PIPE).communicate()[0].split("\n")

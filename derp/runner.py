@@ -13,7 +13,6 @@ class BaseRunner(object):
         self.params = params
         self.test, new = Test.objects.get_from_parameters(
             type=self.test_type,
-            name=self.get_name(),
             parameters=params,
         )
     def run(self):
@@ -21,14 +20,14 @@ class BaseRunner(object):
         start_queries = len(connection.queries)
         try:
             content = self.parse_content(self.execute())
-        except ImportError,e:
+        except Exception,e:
             exc_info = sys.exc_info()
             content = "TEST FAILED: %s"%e
             if config.STABLE or content == self.test.result:
                 pass
             else:
                 traceback.print_exc()
-                raise Exception(e)
+                exit()
 
         #! TODO Currently this is clearly not giving the actual result. Look into it.
         queries = 0 # len(connection.queries)-start_queries
@@ -44,23 +43,16 @@ class BaseRunner(object):
         try:
             j = json.loads(content)
         except ValueError:
-            pass
+            return content
         else:
-            # The current code has some messed up sorting
-            if 'season_points_breakdown' in j:
-                j['season_points_breakdown'] = sorted(j['season_points_breakdown'])
-            if 'results' in j:
-                j['results'] = sorted(j['results'],key=lambda d:(-d.get("points",0),d.get("last_name",None)))
-                for result in j['results']:
-                    if result.get("team_ids",None):
-                        result['team_ids'] = sorted(result['team_ids'])
-            content = json.dumps(j,sort_keys=True,indent=4)
-        return content
+            j = config._process_json(j) # custom json post-processing
+            return json.dumps(j,sort_keys=True,indent=4)
 
 class URLRunner(BaseRunner):
     test_type = 'url'
     def __init__(self,url,*args,**params):
         self.url = url
+        params['url'] = url
         super(URLRunner,self).__init__(*args,**params)
         self.user = None
         self.url_params = {}
@@ -74,5 +66,3 @@ class URLRunner(BaseRunner):
     def execute(self):
         content = t.client.get(self.url.format(**self.url_params)).content
         return content
-    def get_name(self):
-        return "%s %s"%(self.url,self.params.get("email",None))
