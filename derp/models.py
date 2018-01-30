@@ -50,6 +50,13 @@ class TestManager(models.Manager):
         obj.save()
         return obj,new
 
+class TestGroup(JsonModel):
+    class Meta:
+        ordering = ("-order",)
+    __unicode__ = lambda self: self.name
+    name = models.CharField(max_length=255)
+    order = models.IntegerField(default=0)
+
 class Test(JsonModel):
     json_fields = ['id','type','parameters','url_name']
     objects = TestManager()
@@ -63,6 +70,7 @@ class Test(JsonModel):
     result = models.TextField(default="")
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
+    testgroup = models.ForeignKey(TestGroup,null=True,blank=True)
     @property
     def url_name(self):
         if not 'url' in self.parameters:
