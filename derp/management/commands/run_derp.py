@@ -12,6 +12,8 @@ class Command (BaseCommand):
         parser.add_argument('command_name',nargs='?',type=str)
         parser.add_argument('target',nargs='?',type=str,help="which email group to use")
         parser.add_argument('--missing',action="store_true")
+        parser.add_argument("-ntargets",nargs='?',type=int,help="number of targets to use")
+        parser.add_argument("-ncommands",nargs='?',type=int,help="number of commands to use")
     def print_status(self):
         command_tuples = sorted([(key,value) for key,value in config.COMMANDS.items() if not key.startswith("_")])
         for key,commands in command_tuples:
@@ -26,14 +28,19 @@ class Command (BaseCommand):
         targets = config.ALLOWED_TARGETS.get(command,None) # this means a command is limited to these arguments
         targets = targets or config.TARGETS.get(kwargs['target'],kwargs['target']) # or the specified arguments
         targets = targets or config.TARGETS['_all'] # or just use them all!
+        commands = config.COMMANDS.get(command,[])
         if type(targets) == str:
             targets = targets.split(',')
-        print "Using commands:",config.COMMANDS.get(command,[])
+        if kwargs['ncommands']:
+            commands = commands[:kwargs['ncommands']]
+        if kwargs['ntargets']:
+            targets = targets[:kwargs['ntargets']]
+        print "Using commands:",commands
         print "Using targets:",targets
         today = datetime.date.today()
         for target in targets:
             #t.clear("\n*** Using target %s ***"%target)
-            for subcommand in config.COMMANDS.get(command,[]):
+            for subcommand in commands:
                 _ = URLRunner if type(subcommand) == str else TaskRunner
                 runner = _(subcommand,email=target)
                 if kwargs['missing'] and runner.test.testrun_set.filter(commit_id=config.COMMIT_HASH,status="pass",created__gte=today):
