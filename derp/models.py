@@ -3,8 +3,9 @@ from django.db import models
 
 from derp.fields import JSONField
 from derp import config
+from lablackey.utils import latin1_to_ascii
 
-import hashlib, json, subprocess
+import hashlib, json, subprocess, re
 
 class JsonModel(models.Model):
     class Meta:
@@ -27,14 +28,22 @@ class CommitManager(models.Manager):
             commit.save()
             parent = commit
 
+STATUS_CHOICES = [
+    ('active','active'),
+    ('archived','archived'),
+    ('stable','stable'),
+]
+
 class Commit(JsonModel):
     class Meta:
         ordering = ("-order",)
     __unicode__ = lambda self: self.id
-    json_fields = ['parent_id','order','id']
+    json_fields = ['parent_id','order','id','name']
     parent = models.ForeignKey('self', related_name='children', blank=True, null=True)
     order = models.IntegerField(default=0)
+    name = models.CharField(max_length=128,null=True,blank=True)
     id = models.CharField(max_length=32,primary_key=True)
+    #status = models.CharField(max_length=64,choices=STATUS_CHOICES,null=True,blank=True)
     objects = CommitManager()
     def save(self,*args,**kwargs):
         if self.parent_id:
@@ -54,8 +63,10 @@ class TestGroup(JsonModel):
     class Meta:
         ordering = ("-order",)
     __unicode__ = lambda self: self.name
+    json_fields = ['id','name','order','commands']
     name = models.CharField(max_length=255)
     order = models.IntegerField(default=0)
+    commands = property(lambda self: config.COMMANDS.get(self.name,[]))
 
 class Test(JsonModel):
     json_fields = ['id','type','parameters','url_name']
@@ -64,6 +75,7 @@ class Test(JsonModel):
         ('url','URL'),
         ('task','TASK'),
     ]
+    command = models.CharField(max_length=256,default="None")
     type = models.CharField(max_length=16,choices=TEST_CHOICES)
     parameters = JSONField(default=dict)
     parameters_hash = models.CharField(max_length=32,default="arst")
@@ -89,7 +101,8 @@ class Test(JsonModel):
     def verify(self,content):
         from derp import t
         old_result = self.result or ""
-        success = False
+        old_result = latin1_to_ascii(old_result)
+        content = latin1_to_ascii(content)
         if config.STABLE:
             verb = "SAME" if self.result == content else ("UPDATED %s>%s"%(len(self.result),len(content)))
             if not old_result:
@@ -97,12 +110,29 @@ class Test(JsonModel):
             self.result = content
             self.save()
             t("%s %s"%(verb,self))
-            success = True
-        elif not self.result:
+            return True
+        if not self.result:
             raise ValueError("Stable result not recorded for %s"%self)
-        elif self.result == content:
+
+        if old_result != content: # last minute reconcilation for big integers that are off by small amounts
+            old_lines = old_result.split("\n")
+            new_lines = content.split("\n")
+            for i,old_line in enumerate(old_lines):
+                if len(new_lines) <= i:
+                    break
+                new_line = new_lines[i]
+                if old_line == new_line:
+                    continue
+                old_number = int((re.findall(": (\d+)",old_line) or ['0'])[0])
+                new_number = int((re.findall(": (\d+)",new_line) or ['0'])[0])
+                if not (old_number and new_number) or old_number == new_number:
+                    continue
+                if abs(old_number-new_number)/float(old_number) < 0.001:
+                    new_lines[i] = new_line.replace(str(new_number),str(old_number))
+            content = "\n".join(new_lines)
+        if old_result == content:
             t("PASS: %s"%self)
-            success = True
+            return True
         if old_result and old_result != content:
             # maybe this should be on t?
             import os, difflib
@@ -112,9 +142,10 @@ class Test(JsonModel):
             diff_dir = t.mkdir(diff_dir,prefix=".diff")
             diff_path = os.path.join(diff_dir,"%s.diff"%fname)
             d = "\n".join(difflib.unified_diff(old_result.split("\n"),content.split("\n")))
+            headers = ["#%s"%self]+ ["#%s: %s"%i for i in self.parameters.items()]
+            d = "\n".join(headers) + "\n\n"+d
             t.write_file(diff_path,d,group="DIFF")
             t("CHANGED: %s %s"%(self.id,self))
-        return success
     def record_run(self,seconds,queries,status='pass'):
         Commit.objects.get_or_create(id=config.COMMIT_HASH)
         run = TestRun.objects.create(
@@ -141,6 +172,7 @@ class Test(JsonModel):
         out = self.type.upper()+": "
         items = [self.parameters.get(key,None) for key in ['url','task_name','email']]
         items = " ".join([i for i in items if i])
+        items = items.replace("/api/users/manager/","mgr/")
         return self.type.upper()+": " + items
 
 STATUS_CHOICES = [
