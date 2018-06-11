@@ -8,7 +8,10 @@ class TestGroupAdmin(admin.ModelAdmin):
 
 @admin.register(Commit)
 class CommitAdmin(admin.ModelAdmin):
-    pass
+    list_display = ['__unicode__','name','status_count']
+    list_editable = ['name']
+    def status_count(self,obj):
+        return obj.teststatus_set.count()
 
 class TestRunInline(admin.TabularInline):
     extra = 0
@@ -17,6 +20,7 @@ class TestRunInline(admin.TabularInline):
 
 @admin.register(Test)
 class TestAdmin(admin.ModelAdmin):
+    search_fields = ['parameters']
     inlines = [TestRunInline]
     readonly_fields = ['type', 'parameters', 'parameters_hash', 'created', 'result']
     list_filter = ['testgroup']
