@@ -18,7 +18,14 @@
     });
 </derp-table>
 
-uR.ready(function() {
+
+uR.zeros = function zeros(n){
+    var out = [];
+    for (var i=0;i<n;i++) { out.push(0) }
+    return out;
+}
+
+/*uR.ready(function() {
     uR.math = {};
     uR.math.average = function(numbers) {
         if (!numbers || !numbers.length) { return }
@@ -59,11 +66,6 @@ uR.ready(function() {
     uR.ajax({
         url: "/derp/results.json",
         success: function(data) {
-            function zeros(n){
-                var out = [];
-                for (var i=0;i<n;i++) { out.push(0) }
-                return out;
-            }
             uR.derp = data;
             data.test_groups = {};
             data.test_list = [];
@@ -99,4 +101,4 @@ uR.ready(function() {
         },
     });
 
-});
+});*/

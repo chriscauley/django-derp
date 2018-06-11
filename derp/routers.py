@@ -7,6 +7,6 @@ class DatabaseRouter(object):
         if model._meta.app_label == "derp":
             return "derp"
         
-    def allow_migrate(self, db, model):
+    def allow_migrate(self, db, app_label, model_name=None, **hints):
         if db == 'derp': 
-            return model._meta.app_label in ['derp', 'django']
+            return app_label in ['derp', 'django']

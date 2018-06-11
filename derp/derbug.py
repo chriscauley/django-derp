@@ -22,7 +22,7 @@ class Track():
         self.client = Client()
         self.prefix = kwargs.get('prefix',".__results")
     def __call__(self,s=""):
-        if not s:
+        if not s and s != 0:
             _f,line_no,func,_t = traceback.extract_stack()[-2]
             parts = _f.split("/")
             s = "%s: %s@%s"%(parts[-1],func,line_no)
@@ -63,7 +63,9 @@ class Track():
         if not u.check_password(password) and force:
             u.set_password(password)
             u.save()
-        self.client.login(username=email,password=password)
+        if not self.client.login(username=email,password=password):
+            print u.is_active
+            raise Exception("Unable to login: %s"%email)
         u.logged_in = email
     def mkdir(self,path,prefix=None):
         prefix = prefix or self.prefix
@@ -85,16 +87,23 @@ class Track():
         return content
 
     def write_sql(self,s,content,comments=[]):
+        if s.endswith(".sql"):
+            s = s[:-4]
         fpath = ".dev/derp/.queries/%s.sql"%s
+        if hasattr(comments,'GET'): #comments is actually a request
+            request = comments
+            email = request.user.email if request.user.email else "no user"
+            comments = [request.path,request.GET.urlencode(),email]
+            fpath = self.mkdir(".dev/derp/.queries/%s/"%(email.split("@")[-1]),prefix ="./") +"/%s.sql"%s
         if os.path.exists(fpath):
             return
         head = ""
         for c in comments:
             head = head + "#%s\n"%c
         self.write_file(fpath,head+content)
-        arst
+        print "WROTE SQL:",fpath
     def write_file(self,path,content,group=None):
         with open(path,'w') as f:
-            f.write(content)
+            f.write(content.encode("utf-8"))
         group and self.groups[group].append(path)
 t = Track()

@@ -4,8 +4,8 @@ from django.core.serializers.json import DjangoJSONEncoder
 import json
 
 class JSONField(models.TextField):
-    __metaclass__ = models.SubfieldBase
-
+    def from_db_value(self, value, expression, connection, context):
+        return value
     def to_python(self, value):
         """Convert our string value to JSON after we load it from the DB"""
         if value == "":
